@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Multijuegos: Snake + Wordle + Sopa de Letras</title>
+  <style>
+    :root{
+      --bg:linear-gradient(180deg,#071022,#0b1220);
+      --card:#0f1724;
+      --accent:#16a34a;
+      --muted:#9ca3af;
+      --tile:#111827;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;font-family:Inter,system-ui, -apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#e6eef8;padding:18px;display:flex;justify-content:center}
+    .app{width:100%;max-width:1100px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    h1{font-size:18px;margin:0}
+    .tabs{display:flex;gap:8px}
+    .tab{padding:8px 12px;border-radius:8px;background:rgba(255,255,255,0.03);cursor:pointer;font-weight:700}
+    .tab.active{background:linear-gradient(90deg,#134e34,#16a34a);color:#fff}
+    .panel{margin-top:12px;background:linear-gradient(180deg,#071226,#071420);padding:14px;border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    .layout{display:grid;grid-template-columns: 1fr;gap:12px}
+    @media(min-width:980px){ .layout{grid-template-columns: 1fr 360px} }
+
+    /* Common UI */
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    button{cursor:pointer;border:none;padding:8px 10px;border-radius:8px;background:#0b1726;color:#e6eef8;font-weight:700}
+    button.primary{background:linear-gradient(90deg,#134e34,#16a34a);color:#fff}
+    .small{color:var(--muted);font-size:13px}
+
+    /* ---------- SNAKE ---------- */
+    #snakeCanvas{background:#08111a;border-radius:8px;width:100%;height:auto;max-width:640px;display:block}
+    .snake-sidebar{display:flex;flex-direction:column;gap:10px}
+
+    /* ---------- WORDLE ---------- */
+    .board{display:grid;grid-template-rows:repeat(6,1fr);gap:8px;margin-bottom:12px}
+    .row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+    .tile{aspect-ratio:1/1;border-radius:6px;background:var(--tile);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;color:var(--text);text-transform:uppercase;user-select:none}
+    .kb-row{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+    .key{padding:10px 8px;border-radius:6px;background:#0f1724;border:1px solid rgba(255,255,255,0.03);min-width:42px;text-align:center;cursor:pointer;font-weight:700}
+    .key.wide{min-width:70px}
+
+    /* ---------- SOPA ---------- */
+    #sopaGrid{display:grid;gap:4px;margin:12px 0}
+    .cell{width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:#fff;color:#111;border-radius:6px;user-select:none;cursor:pointer;font-weight:700}
+    .cell.sel{background:#16a34a;color:#fff}
+    ul.wordlist{padding:0;margin:0;display:flex;flex-direction:column;gap:4px}
+    ul.wordlist li{list-style:none;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px}
+
+    footer.small{margin-top:10px;color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Multijuegos — Snake · Wordle · Sopa de letras (ropa)</h1>
+      <div class="tabs" role="tablist">
+        <div class="tab active" data-tab="snake">Snake</div>
+        <div class="tab" data-tab="wordle">Wordle</div>
+        <div class="tab" data-tab="sopa">Sopa de letras</div>
+      </div>
+    </header>
+
+    <section class="panel layout">
+      <!-- Main column -->
+      <div id="mainColumn">
+        <!-- Snake -->
+        <div id="snake" class="game active">
+          <h2 class="small">La Serpiente</h2>
+          <canvas id="snakeCanvas" width="480" height="480" aria-label="Canvas juego la serpiente"></canvas>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <div class="small">Controles: Flechas / WASD (iniciar con tecla o botón)</div>
+            <div id="snakeStatus" class="small">Listo</div>
+          </div>
+        </div>
+
+        <!-- Wordle -->
+        <div id="wordle" class="game" style="display:none;">
+          <h2 class="small">Wordle (5 letras)</h2>
+          <div id="wordleBoard" class="board" aria-hidden="false"></div>
+          <div id="wordleKeyboard"></div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
+            <button id="wordleNew" class="primary">Nuevo</button>
+            <button id="wordleShow" >Mostrar palabra</button>
+          </div>
+        </div>
+
+        <!-- Sopa -->
+        <div id="sopa" class="game" style="display:none;">
+          <h2 class="small">Sopa de letras — Ropa</h2>
+          <div id="sopaWrapper" style="display:flex;gap:12px;flex-wrap:wrap">
+            <div>
+              <div id="sopaGrid"></div>
+            </div>
+            <div style="min-width:200px">
+              <strong class="small">Palabras</strong>
+              <ul id="sopaWords" class="wordlist"></ul>
+              <div style="margin-top:8px;display:flex;gap:8px">
+                <button id="sopaHint">Mostrar 2s</button>
+                <button id="sopaNew" class="primary">Nuevo</button>
+              </div>
+              <p class="small" style="margin-top:8px">Selecciona letras arrastrando o haciendo clic en inicio y fin. Encuentra todas las palabras.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar (shared controls / info) -->
+      <aside style="padding-left:8px;">
+        <div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:8px">
+          <h3 class="small">Controles Rápidos</h3>
+          <div id="controlsSnake" class="snake-sidebar">
+            <div class="controls">
+              <button id="snakeStart" class="primary">Iniciar Snake</button>
+              <button id="snakePause">Pausa</button>
+              <button id="snakeReset">Reiniciar</button>
+            </div>
+            <div class="small">Velocidad: <input id="snakeSpeed" type="range" min="6" max="20" value="8" /></div>
+          </div>
+
+          <div style="height:8px"></div>
+
+          <div id="controlsWordle" style="display:none">
+            <div class="small">Wordle</div>
+            <div class="controls" style="margin-top:6px">
+              <button id="wordleHint">Mostrar palabra</button>
+            </div>
+          </div>
+
+          <div style="height:8px"></div>
+
+          <div id="controlsSopa" style="display:none">
+            <div class="small">Sopa de letras</div>
+            <div class="controls" style="margin-top:6px">
+              <button id="showAllFound">Marcar encontradas</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="small">Hecho con ❤️ — Multijuegos HTML (todo en 1 archivo)</footer>
+  </div>
+
+  <script>
+  // ---------- TAB SWITCHING ----------
+  (function tabs(){
+    const tabs = document.querySelectorAll('.tab');
+    const games = { snake: document.getElementById('snake'), wordle: document.getElementById('wordle'), sopa: document.getElementById('sopa')};
+    const controls = { controlsSnake: document.getElementById('controlsSnake'), controlsWordle: document.getElementById('controlsWordle'), controlsSopa: document.getElementById('controlsSopa') };
+    function activate(name){
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      Object.keys(games).forEach(k => games[k].style.display = (k===name)? 'block' : 'none');
+      // controls visibility
+      controls.controlsSnake.style.display = name==='snake' ? '' : 'none';
+      controls.controlsWordle.style.display = name==='wordle' ? '' : 'none';
+      controls.controlsSopa.style.display = name==='sopa' ? '' : 'none';
+      // give focus to canvas when snake active
+      if(name==='snake') document.getElementById('snakeCanvas').focus();
+    }
+    tabs.forEach(t => t.addEventListener('click', ()=> activate(t.dataset.tab)));
+  })();
+
+  // ---------- SNAKE GAME (IIFE to avoid collisions) ----------
+  (function snakeGame(){
+    const canvas = document.getElementById('snakeCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('snakeStatus');
+    const startBtn = document.getElementById('snakeStart');
+    const pauseBtn = document.getElementById('snakePause');
+    const resetBtn = document.getElementById('snakeReset');
+    const speedRange = document.getElementById('snakeSpeed');
+
+    const tileSize = 20;
+    const tilesX = Math.floor(canvas.width / tileSize);
+    const tilesY = Math.floor(canvas.height / tileSize);
+
+    let snake = [], dir = {x:1,y:0}, nextDir = {x:1,y:0}, food = null;
+    let score = 0, level = 1, speed = Number(speedRange.value);
+    let running = false, gameOver = false;
+    let tickIntervalMs = 1000/speed, lastTick = 0, gameLoopId = null, allowWrap = false;
+
+    function resetGame(){
+      snake = [
+        {x: Math.floor(tilesX/2), y: Math.floor(tilesY/2)},
+        {x: Math.floor(tilesX/2)-1, y: Math.floor(tilesY/2)},
+        {x: Math.floor(tilesX/2)-2, y: Math.floor(tilesY/2)}
+      ];
+      dir = {x:1,y:0}; nextDir = {x:1,y:0};
+      spawnFood(); score=0; level=1; speed=Number(speedRange.value);
+      tickIntervalMs = 1000/speed; gameOver=false; running=false;
+      statusEl.textContent = 'Listo';
+      draw();
+    }
+
+    function spawnFood(){
+      let placed=false, tries=0;
+      while(!placed && tries<1000){
+        tries++;
+        const fx = Math.floor(Math.random()*tilesX);
+        const fy = Math.floor(Math.random()*tilesY);
+        if(!snake.some(s=>s.x===fx&&s.y===fy)){ food={x:fx,y:fy}; placed=true;}
+      }
+      if(!placed) food=null;
+    }
+
+    function setDirection(dx,dy){
+      if(dx === -dir.x && dy === -dir.y) return;
+      nextDir = {x:dx,y:dy};
+    }
+
+    function gameTick(){
+      dir = nextDir;
+      const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+      if(allowWrap){
+        if(head.x<0) head.x = tilesX-1;
+        if(head.x>=tilesX) head.x=0;
+        if(head.y<0) head.y=tilesY-1;
+        if(head.y>=tilesY) head.y=0;
+      } else {
+        if(head.x<0 || head.x>=tilesX || head.y<0 || head.y>=tilesY) return endGame();
+      }
+      if(snake.some(seg=>seg.x===head.x && seg.y===head.y)) return endGame();
+      snake.unshift(head);
+      if(food && head.x===food.x && head.y===food.y){
+        score += 10;
+        level = Math.floor(score/50)+1;
+        speed = Math.min(30, Number(speedRange.value) + Math.floor(score/50));
+        tickIntervalMs = 1000/speed;
+        spawnFood();
+      } else snake.pop();
+    }
+
+    function endGame(){ running=false; gameOver=true; statusEl.textContent='Game Over'; }
+
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if(food) drawRect(food.x, food.y, tileSize, tileSize, '#ef4444');
+      for(let i=0;i<snake.length;i++){
+        const s=snake[i], isHead = i===0;
+        if(isHead) drawRect(s.x,s.y,tileSize,tileSize,'#22c55e');
+        else drawRect(s.x,s.y,tileSize,tileSize,'#2b6b33');
+      }
+
+      if(!running && !gameOver){
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(canvas.width/2 - 140, canvas.height/2 - 28, 280, 56);
+        ctx.fillStyle = '#fff';
+        ctx.font='14px Inter, sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText('Pulsa Iniciar o usa las flechas para comenzar', canvas.width/2, canvas.height/2+6);
+        ctx.restore();
+      }
+      if(gameOver){
+        ctx.save();
+        ctx.globalAlpha=0.9;
+        ctx.fillStyle='#000';
+        ctx.fillRect(0, canvas.height/2 - 48, canvas.width, 96);
+        ctx.fillStyle='#fff';
+        ctx.font='28px Inter, sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText('Game Over', canvas.width/2, canvas.height/2-6);
+        ctx.font='16px Inter, sans-serif';
+        ctx.fillText(`Puntuación: ${score} — Pulsa Reiniciar`, canvas.width/2, canvas.height/2+22);
+        ctx.restore();
+      }
+    }
+
+    function drawRect(tx,ty,w,h,color){
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.floor(tx*tileSize)+1, Math.floor(ty*tileSize)+1, Math.ceil(w)-2, Math.ceil(h)-2);
+    }
+
+    function loop(timestamp){
+      if(!lastTick) lastTick = timestamp;
+      const elapsed = timestamp - lastTick;
+      if(running && elapsed >= tickIntervalMs){
+        lastTick = timestamp;
+        gameTick();
+      }
+      draw();
+      gameLoopId = requestAnimationFrame(loop);
+    }
+
+    // Events
+    window.addEventListener('keydown', (e)=>{
+      // Ensure snake reacts only when snake tab visible
+      if(document.querySelector('.tab.active').dataset.tab !== 'snake') return;
+      if(e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setDirection(0,-1);
+      if(e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') setDirection(0,1);
+      if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') setDirection(-1,0);
+      if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setDirection(1,0);
+      if(e.key === ' '){ e.preventDefault(); togglePause(); }
+      if(!running && !gameOver && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D'].includes(e.key)){
+        startGame();
+      }
+    });
+
+    startBtn.addEventListener('click', startGame);
+    pauseBtn.addEventListener('click', togglePause);
+    resetBtn.addEventListener('click', ()=>{ resetGame(); startGame();});
+    speedRange.addEventListener('input', ()=> {
+      const base = Number(speedRange.value);
+      speed = Math.max(6, base + Math.floor(score/50));
+      tickIntervalMs = 1000/speed;
+    });
+
+    function startGame(){
+      if(gameOver) resetGame();
+      running = true; statusEl.textContent='Corriendo';
+      lastTick = 0;
+      if(gameLoopId) cancelAnimationFrame(gameLoopId);
+      gameLoopId = requestAnimationFrame(loop);
+    }
+    function togglePause(){
+      if(gameOver) return;
+      running = !running;
+      statusEl.textContent = running ? 'Corriendo' : 'Pausado';
+      if(running){ lastTick=0; if(gameLoopId) cancelAnimationFrame(gameLoopId); gameLoopId = requestAnimationFrame(loop); }
+    }
+
+    // init
+    resetGame();
+    draw();
+  })();
+
+  // ---------- WORDLE (IIFE) ----------
+  (function wordleGame(){
+    const BOARD_ROWS = 6, COLS = 5;
+    const SOLUTIONS = ['PLAZA','CASAS','PERRO','GATOS','AMIGO','COMER','FALDA','VESTI','ZAPAT'];
+    const VALID = ['PLAZA','CASAS','PERRO','GATOS','AMIGO','COMER','FALDA','VESTI','ZAPAT','BUFAN','CHAQU','SOMBR','PANTL','VESTI','CHAQ1'];
+
+    const boardEl = document.getElementById('wordleBoard');
+    const kbEl = document.getElementById('wordleKeyboard');
+    const newBtn = document.getElementById('wordleNew');
+    const showBtn = document.getElementById('wordleShow');
+
+    let answer = '', row = 0, col = 0, board = [], status = [], gameOver = false;
+
+    function normalize(w){ return w.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-ZÑ]/gi,'').toUpperCase().slice(0,5); }
+    const SOL = SOLUTIONS.map(normalize).filter(w=>w.length===5);
+    const VAL = VALID.map(normalize).filter(w=>w.length===5).concat(SOL);
+
+    function createBoard(){
+      boardEl.innerHTML = '';
+      for(let r=0;r<BOARD_ROWS;r++){
+        const rowEl = document.createElement('div'); rowEl.className='row';
+        for(let c=0;c<COLS;c++){
+          const t = document.createElement('div'); t.className='tile'; t.id = `w-t-${r}-${c}`; rowEl.appendChild(t);
+        }
+        boardEl.appendChild(rowEl);
+      }
+    }
+    const KEYS = ['QWERTYUIOP','ASDFGHJKL','ZXCVBNM'];
+    function createKeyboard(){
+      kbEl.innerHTML = '';
+      KEYS.forEach((rs, idx)=>{
+        const row = document.createElement('div'); row.className='kb-row';
+        if(idx===2){ row.appendChild(makeKey('Enter','wide'));}
+        for(const ch of rs) row.appendChild(makeKey(ch));
+        if(idx===2) row.appendChild(makeKey('Backspace','wide'));
+        kbEl.appendChild(row);
+      });
+    }
+    function makeKey(label, extra){ const b=document.createElement('div'); b.className='key'; if(extra) b.classList.add(extra); b.textContent = label==='Backspace'?'⌫':label; b.dataset.key = label; b.addEventListener('click', ()=> handleKey(label)); return b; }
+
+    function pickAnswer(){ return SOL[Math.floor(Math.random()*SOL.length)]; }
+
+    function start(){
+      answer = pickAnswer(); row=0; col=0; gameOver=false;
+      board = Array.from({length:BOARD_ROWS}, ()=>Array(COLS).fill(''));
+      status = Array.from({length:BOARD_ROWS}, ()=>Array(COLS).fill(''));
+      resetKeyboard();
+      refreshBoard();
+      console.log('Wordle answer:', answer);
+    }
+    function refreshBoard(){
+      for(let r=0;r<BOARD_ROWS;r++){
+        for(let c=0;c<COLS;c++){
+          const tile = document.getElementById(`w-t-${r}-${c}`);
+          tile.textContent = board[r][c]||'';
+          tile.style.background='';
+          tile.style.color='';
+          if(status[r][c]){
+            const s = status[r][c];
+            tile.style.background = s==='correct' ? '#538d4e' : s==='present' ? '#b59f3b' : '#3a3a3c';
+            tile.style.color = '#fff';
+          }
+        }
+      }
+    }
+
+    function handleKey(key){
+      if(gameOver) return;
+      if(key === 'Enter') return onEnter();
+      if(key === 'Backspace') return onBack();
+      if(key.length===1 && /^[A-Z]$/i.test(key)) onLetter(key.toUpperCase());
+    }
+    function onLetter(ch){
+      if(col < COLS){ board[row][col]=ch; col++; refreshBoard(); }
+    }
+    function onBack(){ if(col>0){ col--; board[row][col]=''; refreshBoard(); } }
+    function onEnter(){
+      if(col !== COLS) { alert('La palabra debe tener 5 letras'); return; }
+      const guess = board[row].join('');
+      if(!VAL.includes(guess)) { alert('Palabra no válida'); return; }
+      const res = evaluate(guess, answer);
+      status[row] = res.slice();
+      applyKeyboardColors(guess, res);
+      refreshBoard();
+      if(guess === answer){ alert('¡Has ganado!'); gameOver=true; return; }
+      row++; col=0;
+      if(row >= BOARD_ROWS){ alert('Fin — la palabra era: ' + answer); gameOver=true; }
+    }
+
+    function evaluate(guess, sol){
+      const res = Array(COLS).fill('absent');
+      const solArr = sol.split(''); const gArr = guess.split('');
+      for(let i=0;i<COLS;i++){ if(gArr[i]===solArr[i]){ res[i]='correct'; solArr[i]=null; gArr[i]=null; } }
+      for(let i=0;i<COLS;i++){ if(gArr[i]){ const idx = solArr.indexOf(gArr[i]); if(idx!==-1){ res[i]='present'; solArr[idx]=null; } } }
+      return res;
+    }
+
+    function applyKeyboardColors(guess, res){
+      for(let i=0;i<guess.length;i++){
+        const k = guess[i]; const state = res[i];
+        const keys = Array.from(document.querySelectorAll('[data-key]')).filter(el=>el.dataset.key===k);
+        keys.forEach(el=>{
+          const prev = el.dataset.state;
+          if(prev==='correct') return;
+          if(prev==='present' && state==='absent') return;
+          el.dataset.state = state;
+          el.style.background = state==='correct'? '#538d4e' : state==='present'? '#b59f3b' : '#3a3a3c';
+          el.style.color = '#fff';
+        });
+      }
+    }
+
+    function resetKeyboard(){ const keys = kbEl.querySelectorAll('.key'); keys.forEach(k=>{k.style.background='';k.style.color='';delete k.dataset.state;}); }
+
+    // physical keyboard (only active on wordle tab)
+    window.addEventListener('keydown', (e)=>{
+      if(document.querySelector('.tab.active').dataset.tab !== 'wordle') return;
+      if(e.key === 'Enter') handleKey('Enter');
+      else if(e.key === 'Backspace' || e.key === 'Delete') handleKey('Backspace');
+      else if(/^[a-zA-Z]$/.test(e.key)) handleKey(e.key.toUpperCase());
+    });
+
+    newBtn.addEventListener('click', start);
+    showBtn.addEventListener('click', ()=> alert('Palabra: ' + answer));
+    // init
+    createBoard(); createKeyboard(); start();
+  })();
+
+  // ---------- SOPA DE LETRAS (IIFE) ----------
+  (function sopaGame(){
+    const words = ["CAMISA","PANTALON","ZAPATO","FALDA","CHAQUETA","BUFANDA","SOMBRERO","VESTIDO"];
+    let size = 12;
+    const gridEl = document.getElementById('sopaGrid');
+    const wordsEl = document.getElementById('sopaWords');
+    const hintBtn = document.getElementById('sopaHint');
+    const newBtn = document.getElementById('sopaNew');
+
+    let grid = [], selected = [], placements = [], found = new Set();
+
+    function init(){
+      size = 12;
+      grid = Array.from({length:size}, ()=>Array(size).fill(''));
+      placements = [];
+      // try placing words (horizontal or vertical)
+      const pool = words.slice();
+      pool.forEach(w=>{
+        placeWord(w);
+      });
+      // fill random
+      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      for(let r=0;r<size;r++){
+        for(let c=0;c<size;c++){
+          if(!grid[r][c]) grid[r][c] = letters[Math.floor(Math.random()*letters.length)];
+        }
+      }
+      renderGrid();
+      renderWordList();
+      found = new Set();
+    }
+
+    function placeWord(word){
+      const w = word.toUpperCase();
+      let placed=false, tries=0;
+      while(!placed && tries<500){
+        tries++;
+        const dir = Math.random()<0.5 ? 'H' : 'V';
+        const row = Math.floor(Math.random()*size);
+        const col = Math.floor(Math.random()*size);
+        if(dir==='H' && col + w.length <= size){
+          let ok=true;
+          for(let i=0;i<w.length;i++){
+            if(grid[row][col+i] && grid[row][col+i] !== w[i]) { ok=false; break; }
+          }
+          if(ok){
+            for(let i=0;i<w.length;i++) grid[row][col+i] = w[i];
+            placements.push({word:w, row, col, dir});
+            placed=true;
+          }
+        } else if(dir==='V' && row + w.length <= size){
+          let ok=true;
+          for(let i=0;i<w.length;i++){
+            if(grid[row+i][col] && grid[row+i][col] !== w[i]) { ok=false; break; }
+          }
+          if(ok){
+            for(let i=0;i<w.length;i++) grid[row+i][col] = w[i];
+            placements.push({word:w, row, col, dir});
+            placed=true;
+          }
+        }
+      }
+      if(!placed){
+        // if failed, force horizontal start at random row col within bounds
+        const r = Math.floor(Math.random()*(size));
+        const c = Math.floor(Math.random()*(size - w.length + 1));
+        for(let i=0;i<w.length;i++) grid[r][c+i] = w[i];
+        placements.push({word:w,row:r,col:c,dir:'H'});
+      }
+    }
+
+    function renderGrid(){
+      gridEl.innerHTML = '';
+      gridEl.style.gridTemplateColumns = `repeat(${size}, 38px)`;
+      for(let r=0;r<size;r++){
+        for(let c=0;c<size;c++){
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.r = r; cell.dataset.c = c;
+          cell.textContent = grid[r][c];
+          cell.addEventListener('mousedown', startSel);
+          cell.addEventListener('mouseenter', moveSel);
+          cell.addEventListener('mouseup', endSel);
+          // touch
+          cell.addEventListener('touchstart', startSel, {passive:true});
+          cell.addEventListener('touchmove', onTouchMove, {passive:true});
+          cell.addEventListener('touchend', endSel);
+          gridEl.appendChild(cell);
+        }
+      }
+      document.addEventListener('mouseup', ()=> { if(window.selActive) endSel(); });
+    }
+
+    function renderWordList(){
+      wordsEl.innerHTML = '';
+      placements.forEach(p=>{
+        const li = document.createElement('li');
+        li.textContent = p.word;
+        li.id = 'w-'+p.word;
+        wordsEl.appendChild(li);
+      });
+    }
+
+    // selection helpers
+    window.selActive = false;
+    function startSel(e){
+      if(document.querySelector('.tab.active').dataset.tab !== 'sopa') return;
+      window.selActive = true;
+      clearSelection();
+      const cell = e.currentTarget;
+      cell.classList.add('sel');
+      selected = [{r: Number(cell.dataset.r), c: Number(cell.dataset.c), el: cell}];
+      e.preventDefault && e.preventDefault();
+    }
+    function moveSel(e){
+      if(!window.selActive) return;
+      const cell = e.currentTarget;
+      // avoid duplicates
+      const r = Number(cell.dataset.r), c = Number(cell.dataset.c);
+      const last = selected[selected.length-1];
+      if(last && last.r===r && last.c===c) return;
+      cell.classList.add('sel');
+      selected.push({r,c,el:cell});
+    }
+    function endSel(){
+      if(!window.selActive) return;
+      window.selActive = false;
+      if(selected.length===0) return;
+      // check if selected forms a straight line horizontal or vertical and contiguous
+      const coords = selected.map(s=>({r:s.r,c:s.c}));
+      const valid = checkSelection(coords);
+      if(valid){
+        const word = coords.map(p=>grid[p.r][p.c]).join('');
+        const wordRev = word.split('').reverse().join('');
+        // check against placements
+        let matched = null;
+        for(const p of placements){
+          if(p.word === word || p.word === wordRev){
+            matched = p; break;
+          }
+        }
+        if(matched && !found.has(matched.word)){
+          // mark found
+          found.add(matched.word);
+          // mark selected as permanently found (style)
+          selected.forEach(s=> s.el.classList.add('sel','found'));
+          const li = document.getElementById('w-'+matched.word);
+          if(li) li.style.textDecoration = 'line-through';
+          checkWin();
+        } else {
+          // flash selection then clear
+          setTimeout(clearSelection, 300);
+        }
+      } else {
+        setTimeout(clearSelection, 200);
+      }
+      selected = [];
+    }
+
+    function onTouchMove(ev){
+      if(!window.selActive) return;
+      const touch = ev.touches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if(el && el.classList && el.classList.contains('cell')){
+        moveSel({currentTarget:el});
+      }
+    }
+
+    function clearSelection(){
+      document.querySelectorAll('.cell.sel').forEach(el=>{
+        if(!el.classList.contains('found')) el.classList.remove('sel');
+      });
+    }
+
+    function checkSelection(coords){
+      if(coords.length<2) return false;
+      const allSameRow = coords.every(p=>p.r === coords[0].r);
+      const allSameCol = coords.every(p=>p.c === coords[0].c);
+      if(!allSameRow && !allSameCol) return false;
+      // ensure contiguous
+      if(allSameRow){
+        const cols = coords.map(x=>x.c).sort((a,b)=>a-b);
+        for(let i=1;i<cols.length;i++) if(cols[i] !== cols[i-1]+1) return false;
+      } else {
+        const rows = coords.map(x=>x.r).sort((a,b)=>a-b);
+        for(let i=1;i<rows.length;i++) if(rows[i] !== rows[i-1]+1) return false;
+      }
+      return true;
+    }
+
+    function checkWin(){
+      if(found.size >= placements.length){
+        setTimeout(()=> alert('¡Has encontrado todas las palabras!'), 150);
+      }
+    }
+
+    hintBtn.addEventListener('click', ()=>{
+      // show all words for 2s
+      placements.forEach(p=>{
+        const coords = [];
+        for(let i=0;i<p.word.length;i++){
+          const r = p.row + (p.dir==='V'? i:0);
+          const c = p.col + (p.dir==='H'? i:0);
+          coords.push({r,c});
+        }
+        coords.forEach(pos=>{
+          const cell = document.querySelector(`.cell[data-r="${pos.r}"][data-c="${pos.c}"]`);
+          if(cell) cell.classList.add('sel');
+        });
+      });
+      setTimeout(()=> { document.querySelectorAll('.cell.sel').forEach(el=>{ if(!el.classList.contains('found')) el.classList.remove('sel'); }); }, 2000);
+    });
+
+    newBtn.addEventListener('click', init);
+
+    // initial
+    init();
+  })();
+
+  </script>
+</body>
+</html>
